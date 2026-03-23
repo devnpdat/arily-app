@@ -251,11 +251,10 @@ paket-files/
 .idea/
 *.sln.iml
 
-# Arily
+# Arily — Logs
 src/Arily.Web/Logs/*
 src/Arily.Web.Host/Logs/*
 src/Arily.AuthServer/Logs/*
-src/Arily.HttpApi.Host/Logs/*
 src/Arily.HttpApi.Host/Logs/*
 src/Arily.DbMigrator/Logs/*
 src/Arily.Blazor.Server/Logs/*
@@ -263,3 +262,71 @@ src/Arily.Blazor.Server.Tiered/Logs/*
 
 # Use abp install-libs to restore.
 **/wwwroot/libs/*
+
+# ──────────────────────────────────────────────
+# Secrets & environment configs
+# ──────────────────────────────────────────────
+appsettings.Production.json
+appsettings.Staging.json
+appsettings.*.local.json
+**/appsettings.secrets.json
+.env
+.env.*
+!.env.example
+*.pfx
+!**/openiddict.pfx
+
+# ──────────────────────────────────────────────
+# Docker volumes / local data
+# ──────────────────────────────────────────────
+docker-volumes/
+.docker/
+
+# ──────────────────────────────────────────────
+# Rider / JetBrains
+# ──────────────────────────────────────────────
+.idea/
+*.sln.iml
+.fleet/
+
+# ──────────────────────────────────────────────
+# VS Code
+# ──────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ──────────────────────────────────────────────
+# macOS
+# ──────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# ──────────────────────────────────────────────
+# Node / npm (wwwroot node_modules)
+# ──────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-error.log
+
+# ──────────────────────────────────────────────
+# Test results & coverage
+# ──────────────────────────────────────────────
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+lcov.info
+
+# ──────────────────────────────────────────────
+# EF Core migrations (chỉ ignore temp, không ignore migrations đã commit)
+# ──────────────────────────────────────────────
+# Không ignore Migrations/ — cần commit vào source control
+
+# ──────────────────────────────────────────────
+# Publish output
+# ──────────────────────────────────────────────
+**/publish/
+out/
