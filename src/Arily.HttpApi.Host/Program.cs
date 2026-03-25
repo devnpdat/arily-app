@@ -33,7 +33,7 @@ public class Program
             .Enrich.WithProperty("Application", "Arily")
             .Enrich.WithProperty("Environment", Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production")
             .WriteTo.Async(c => c.File("Logs/logs.txt"))
-            .WriteTo.Async(c => c.Console()) 
+            .WriteTo.Async(c => c.Console())
             .WriteTo.Async(c => c.Elasticsearch(new ElasticsearchSinkOptions(new Uri(esUrl))
             {
                 IndexFormat = indexFormat,
