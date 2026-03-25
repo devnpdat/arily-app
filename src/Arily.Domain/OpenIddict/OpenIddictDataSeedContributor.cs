@@ -84,6 +84,25 @@ public class OpenIddictDataSeedContributor : IDataSeedContributor, ITransientDep
 
 
 
+        // Test Client (Password Grant — for curl/Postman)
+        var testClientId = configurationSection["Arily_Test:ClientId"];
+        if (!testClientId.IsNullOrWhiteSpace())
+        {
+            await CreateApplicationAsync(
+                name: testClientId!,
+                type: OpenIddictConstants.ClientTypes.Confidential,
+                consentType: OpenIddictConstants.ConsentTypes.Implicit,
+                displayName: "Test Application",
+                secret: configurationSection["Arily_Test:ClientSecret"],
+                grantTypes: new List<string>
+                {
+                    OpenIddictConstants.GrantTypes.Password,
+                    OpenIddictConstants.GrantTypes.RefreshToken
+                },
+                scopes: commonScopes
+            );
+        }
+
         // Swagger Client
         var swaggerClientId = configurationSection["Arily_Swagger:ClientId"];
         if (!swaggerClientId.IsNullOrWhiteSpace())

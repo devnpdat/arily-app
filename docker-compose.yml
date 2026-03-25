@@ -66,6 +66,28 @@ services:
       elasticsearch:
         condition: service_healthy
 
+  apm-server:
+    image: docker.elastic.co/apm/apm-server:8.13.0
+    container_name: arily_apm_server
+    restart: unless-stopped
+    ports:
+      - "8200:8200"
+    command: >
+      apm-server -e
+        -E apm-server.rum.enabled=true
+        -E apm-server.data_streams.wait_for_integration=false
+        -E output.elasticsearch.hosts=http://elasticsearch:9200
+        -E setup.template.enabled=true
+        -E setup.template.settings.index.number_of_replicas=0
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8200/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     container_name: arily_zookeeper

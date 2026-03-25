@@ -1,38 +1,31 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Arily.Crm.Farmers;
-using Arily.Permissions;
-using Microsoft.AspNetCore.Authorization;
 using Volo.Abp.Application.Dtos;
-using Volo.Abp.Application.Services;
 using Volo.Abp.Domain.Repositories;
 
 namespace Arily.Crm;
 
-[Authorize(ArilyPermissions.Farmers.Default)]
-public class FarmerAppService :
-    CrudAppService<
-        Farmer,
-        FarmerDto,
-        Guid,
-        GetFarmerListInput,
-        CreateUpdateFarmerDto>,
-    IFarmerAppService
+public class FarmerAppService : ArilyAppService, IFarmerAppService
 {
-    public FarmerAppService(IRepository<Farmer, Guid> repository)
-        : base(repository)
+    private readonly IRepository<Farmer, Guid> _farmerRepository;
+
+    public FarmerAppService(IRepository<Farmer, Guid> farmerRepository)
     {
-        GetPolicyName = ArilyPermissions.Farmers.Default;
-        GetListPolicyName = ArilyPermissions.Farmers.Default;
-        CreatePolicyName = ArilyPermissions.Farmers.Create;
-        UpdatePolicyName = ArilyPermissions.Farmers.Edit;
-        DeletePolicyName = ArilyPermissions.Farmers.Delete;
+        _farmerRepository = farmerRepository;
     }
 
-    protected override async Task<IQueryable<Farmer>> CreateFilteredQueryAsync(GetFarmerListInput input)
+    public async Task<FarmerDto> GetAsync(Guid id)
     {
-        var query = await Repository.GetQueryableAsync();
+        var farmer = await _farmerRepository.GetAsync(id);
+        return ObjectMapper.Map<Farmer, FarmerDto>(farmer);
+    }
+
+    public async Task<PagedResultDto<FarmerDto>> GetListAsync(GetFarmerListInput input)
+    {
+        var query = await _farmerRepository.GetQueryableAsync();
 
         query = query
             .WhereIf(
@@ -45,47 +38,69 @@ public class FarmerAppService :
             .WhereIf(input.Status.HasValue, x => x.Status == input.Status!.Value)
             .WhereIf(!input.ProvinceCode.IsNullOrWhiteSpace(), x => x.ProvinceCode == input.ProvinceCode);
 
-        return query;
+        var totalCount = query.Count();
+
+        var farmers = query
+            .OrderBy(x => x.FullName)
+            .Skip(input.SkipCount)
+            .Take(input.MaxResultCount)
+            .ToList();
+
+        return new PagedResultDto<FarmerDto>(
+            totalCount,
+            ObjectMapper.Map<List<Farmer>, List<FarmerDto>>(farmers)
+        );
     }
 
-    protected override Task<Farmer> MapToEntityAsync(CreateUpdateFarmerDto createInput)
+    public async Task<FarmerDto> CreateAsync(CreateUpdateFarmerDto input)
     {
-        var entity = new Farmer(
+        var farmer = new Farmer(
             GuidGenerator.Create(),
             CurrentTenant.Id,
-            createInput.Code,
-            createInput.FullName,
-            createInput.PhoneNumber
+            input.Code,
+            input.FullName,
+            input.PhoneNumber
         );
 
-        entity.NickName = createInput.NickName;
-        entity.ProvinceCode = createInput.ProvinceCode;
-        entity.DistrictCode = createInput.DistrictCode;
-        entity.WardCode = createInput.WardCode;
-        entity.Address = createInput.Address;
-        entity.Latitude = createInput.Latitude;
-        entity.Longitude = createInput.Longitude;
-        entity.Note = createInput.Note;
-        entity.Status = createInput.Status;
+        farmer.NickName = input.NickName;
+        farmer.ProvinceCode = input.ProvinceCode;
+        farmer.DistrictCode = input.DistrictCode;
+        farmer.WardCode = input.WardCode;
+        farmer.Address = input.Address;
+        farmer.Latitude = input.Latitude;
+        farmer.Longitude = input.Longitude;
+        farmer.Note = input.Note;
+        farmer.Status = input.Status;
 
-        return Task.FromResult(entity);
+        await _farmerRepository.InsertAsync(farmer);
+
+        return ObjectMapper.Map<Farmer, FarmerDto>(farmer);
     }
 
-    protected override Task MapToEntityAsync(CreateUpdateFarmerDto updateInput, Farmer entity)
+    public async Task<FarmerDto> UpdateAsync(Guid id, CreateUpdateFarmerDto input)
     {
-        entity.Code = updateInput.Code;
-        entity.FullName = updateInput.FullName;
-        entity.NickName = updateInput.NickName;
-        entity.PhoneNumber = updateInput.PhoneNumber;
-        entity.ProvinceCode = updateInput.ProvinceCode;
-        entity.DistrictCode = updateInput.DistrictCode;
-        entity.WardCode = updateInput.WardCode;
-        entity.Address = updateInput.Address;
-        entity.Latitude = updateInput.Latitude;
-        entity.Longitude = updateInput.Longitude;
-        entity.Note = updateInput.Note;
-        entity.Status = updateInput.Status;
+        var farmer = await _farmerRepository.GetAsync(id);
 
-        return Task.CompletedTask;
+        farmer.Code = input.Code;
+        farmer.FullName = input.FullName;
+        farmer.NickName = input.NickName;
+        farmer.PhoneNumber = input.PhoneNumber;
+        farmer.ProvinceCode = input.ProvinceCode;
+        farmer.DistrictCode = input.DistrictCode;
+        farmer.WardCode = input.WardCode;
+        farmer.Address = input.Address;
+        farmer.Latitude = input.Latitude;
+        farmer.Longitude = input.Longitude;
+        farmer.Note = input.Note;
+        farmer.Status = input.Status;
+
+        await _farmerRepository.UpdateAsync(farmer);
+
+        return ObjectMapper.Map<Farmer, FarmerDto>(farmer);
+    }
+
+    public async Task DeleteAsync(Guid id)
+    {
+        await _farmerRepository.DeleteAsync(id);
     }
 }

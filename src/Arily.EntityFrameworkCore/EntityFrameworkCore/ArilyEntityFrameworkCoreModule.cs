@@ -1,5 +1,7 @@
 ﻿using System;
+using Arily.EntityFrameworkCore.Interceptor;
 using Microsoft.Extensions.DependencyInjection;
+using Volo.Abp.DependencyInjection;
 using Volo.Abp.Uow;
 using Volo.Abp.AuditLogging.EntityFrameworkCore;
 using Volo.Abp.BackgroundJobs.EntityFrameworkCore;
@@ -35,6 +37,14 @@ public class ArilyEntityFrameworkCoreModule : AbpModule
         AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
         ArilyEfCoreEntityExtensionMappings.Configure();
+
+        context.Services.OnRegistered(ctx =>
+        {
+            if (ctx.ImplementationType.Name.EndsWith("Repository"))
+            {
+                ctx.Interceptors.TryAdd<RepositoryAuditInterceptor>();
+            }
+        });
     }
 
     public override void ConfigureServices(ServiceConfigurationContext context)

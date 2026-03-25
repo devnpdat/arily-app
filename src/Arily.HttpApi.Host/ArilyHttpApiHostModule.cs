@@ -13,8 +13,14 @@ using OpenIddict.Validation.AspNetCore;
 using Volo.Abp;
 using Volo.Abp.Account.Web;
 using Volo.Abp.AspNetCore.MultiTenancy;
-using Volo.Abp.AspNetCore.Mvc;
+using Volo.Abp.AspNetCore.Mvc.UI.Theme.Basic;
 using Volo.Abp.AspNetCore.Serilog;
+using Arily.Auditing;
+using Arily.Elasticsearch;
+using Arily.Interceptor;
+using Elastic.Apm.NetCoreAll;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Volo.Abp.Auditing;
 using Volo.Abp.Autofac;
 using Volo.Abp.Modularity;
 using Volo.Abp.Security.Claims;
@@ -29,6 +35,7 @@ namespace Arily;
     typeof(ArilyApplicationModule),
     typeof(ArilyEntityFrameworkCoreModule),
     typeof(AbpAccountWebOpenIddictModule),
+    typeof(AbpAspNetCoreMvcUiBasicThemeModule),
     typeof(AbpAspNetCoreSerilogModule),
     typeof(AbpSwashbuckleModule)
 )]
@@ -52,9 +59,36 @@ public class ArilyHttpApiHostModule : AbpModule
         var configuration = context.Services.GetConfiguration();
 
         ConfigureAuthentication(context);
-        ConfigureConventionalControllers();
+        ConfigureAuditLogging(context, configuration);
         ConfigureCors(context, configuration);
         ConfigureSwaggerServices(context, configuration);
+
+        context.Services.AddHttpClient();
+        context.Services.AddHostedService<ElasticsearchSetupService>();
+        context.Services.AddAllElasticApm();
+    }
+
+    private void ConfigureAuditLogging(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        Configure<AbpAuditingOptions>(options =>
+        {
+            options.IsEnabled = bool.Parse(configuration["AbpAuditingOptions:IsEnabled"]!);
+            options.HideErrors = bool.Parse(configuration["AbpAuditingOptions:HideErrors"]!);
+            options.IsEnabledForAnonymousUsers = bool.Parse(configuration["AbpAuditingOptions:IsEnabledForAnonymousUsers"]!);
+            options.AlwaysLogOnException = bool.Parse(configuration["AbpAuditingOptions:AlwaysLogOnException"]!);
+            options.IsEnabledForGetRequests = bool.Parse(configuration["AbpAuditingOptions:IsEnabledForGetRequests"]!);
+            options.ApplicationName = configuration["AbpAuditingOptions:ApplicationName"];
+            options.EntityHistorySelectors.AddAllEntities();
+        });
+
+        Configure<CustomAuditLogOptions>(options =>
+        {
+            options.IsEnabledLogResponse = bool.Parse(configuration["AbpAuditingOptions:IsEnabledLogResponse"]!);
+        });
+
+        context.Services.Replace(
+            ServiceDescriptor.Transient<AuditingInterceptor, CustomAuditingInterceptor>()
+        );
     }
 
     private void ConfigureAuthentication(ServiceConfigurationContext context)
@@ -63,14 +97,6 @@ public class ArilyHttpApiHostModule : AbpModule
         context.Services.Configure<AbpClaimsPrincipalFactoryOptions>(options =>
         {
             options.IsDynamicClaimsEnabled = true;
-        });
-    }
-
-    private void ConfigureConventionalControllers()
-    {
-        Configure<AbpAspNetCoreMvcOptions>(options =>
-        {
-            options.ConventionalControllers.Create(typeof(ArilyApplicationModule).Assembly);
         });
     }
 
