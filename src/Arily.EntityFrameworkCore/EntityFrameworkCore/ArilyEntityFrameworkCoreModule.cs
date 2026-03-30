@@ -40,7 +40,11 @@ public class ArilyEntityFrameworkCoreModule : AbpModule
 
         context.Services.OnRegistered(ctx =>
         {
-            if (ctx.ImplementationType.Name.EndsWith("Repository"))
+            // Exclude AuditLogging repositories to avoid circular dependency:
+            // RepositoryAuditInterceptor → AuditingManager → AuditingHelper → AuditingStore → EfCoreAuditLogRepository → RepositoryAuditInterceptor
+            var ns = ctx.ImplementationType.Namespace ?? string.Empty;
+            if (ctx.ImplementationType.Name.EndsWith("Repository") &&
+                !ns.Contains("AuditLogging"))
             {
                 ctx.Interceptors.TryAdd<RepositoryAuditInterceptor>();
             }
