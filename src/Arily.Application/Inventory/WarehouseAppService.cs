@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Arily.Enums;
 using Arily.Inventory.Warehouses;
+using Arily.Redis;
 using Volo.Abp;
 using Volo.Abp.Application.Dtos;
 using Volo.Abp.Domain.Repositories;
@@ -13,81 +13,92 @@ namespace Arily.Inventory;
 [RemoteService(IsEnabled = false)]
 public class WarehouseAppService : ArilyAppService, IWarehouseAppService
 {
-    private readonly IRepository<Warehouse, Guid> _warehouseRepository;
+    private readonly IRepository<Warehouse, Guid> _repository;
+    private readonly IRedisService _redis;
 
-    public WarehouseAppService(IRepository<Warehouse, Guid> warehouseRepository)
+    public WarehouseAppService(
+        IRepository<Warehouse, Guid> repository,
+        IRedisService redis)
     {
-        _warehouseRepository = warehouseRepository;
+        _repository = repository;
+        _redis = redis;
     }
 
     public async Task<WarehouseDto> GetAsync(Guid id)
     {
-        var warehouse = await _warehouseRepository.GetAsync(id);
-        return ObjectMapper.Map<Warehouse, WarehouseDto>(warehouse);
+        var key = RedisKeys.Warehouse(CurrentTenant.Id, id);
+        var cached = await _redis.StringGetAsync<WarehouseDto>(key);
+        if (cached != null) return cached;
+
+        var entity = await _repository.GetAsync(id);
+        var dto = ObjectMapper.Map<Warehouse, WarehouseDto>(entity);
+        await _redis.StringSetAsync(key, dto, RedisTtl.MasterData);
+        return dto;
     }
 
     public async Task<PagedResultDto<WarehouseDto>> GetListAsync(GetWarehouseListInput input)
     {
-        var query = await _warehouseRepository.GetQueryableAsync();
+        var hashKey = RedisKeys.WarehouseList(CurrentTenant.Id);
+        var allItems = await _redis.HashGetAllAsync<WarehouseDto>(hashKey);
 
-        query = query
-            .WhereIf(
-                !input.Filter.IsNullOrWhiteSpace(),
-                x => x.Name.Contains(input.Filter!) || x.Code.Contains(input.Filter!)
-            )
-            .WhereIf(input.Status.HasValue, x => x.Status == input.Status!.Value);
+        if (allItems == null)
+        {
+            var entities = (await _repository.GetQueryableAsync()).OrderBy(x => x.Name).ToList();
+            allItems = ObjectMapper.Map<List<Warehouse>, List<WarehouseDto>>(entities);
+            var entries = allItems.Select(x => (x.Id.ToString(), x)).ToList();
+            await _redis.HashLoadAsync(hashKey, entries, RedisTtl.MasterData);
+        }
 
-        var totalCount = query.Count();
+        var filtered = allItems.AsEnumerable();
+        if (!input.Filter.IsNullOrWhiteSpace())
+            filtered = filtered.Where(x => x.Name.Contains(input.Filter!) || x.Code.Contains(input.Filter!));
+        if (input.Status.HasValue)
+            filtered = filtered.Where(x => x.Status == input.Status!.Value);
 
-        var warehouses = query
-            .OrderBy(x => x.Name)
-            .Skip(input.SkipCount)
-            .Take(input.MaxResultCount)
-            .ToList();
-
+        var result = filtered.OrderBy(x => x.Name).ToList();
         return new PagedResultDto<WarehouseDto>(
-            totalCount,
-            ObjectMapper.Map<List<Warehouse>, List<WarehouseDto>>(warehouses)
-        );
+            result.Count,
+            result.Skip(input.SkipCount).Take(input.MaxResultCount).ToList());
     }
 
     public async Task<WarehouseDto> CreateAsync(CreateUpdateWarehouseDto input)
     {
-        var warehouse = new Warehouse(
-            GuidGenerator.Create(),
-            CurrentTenant.Id,
-            input.Code,
-            input.Name
-        );
+        var entity = new Warehouse(GuidGenerator.Create(), CurrentTenant.Id, input.Code, input.Name)
+        {
+            Address = input.Address,
+            ProvinceCode = input.ProvinceCode,
+            Note = input.Note,
+            Status = input.Status
+        };
+        await _repository.InsertAsync(entity);
+        var dto = ObjectMapper.Map<Warehouse, WarehouseDto>(entity);
 
-        warehouse.Address = input.Address;
-        warehouse.ProvinceCode = input.ProvinceCode;
-        warehouse.Note = input.Note;
-        warehouse.Status = input.Status;
-
-        await _warehouseRepository.InsertAsync(warehouse);
-
-        return ObjectMapper.Map<Warehouse, WarehouseDto>(warehouse);
+        await _redis.StringSetAsync(RedisKeys.Warehouse(CurrentTenant.Id, entity.Id), dto, RedisTtl.MasterData);
+        await _redis.HashSetAsync(RedisKeys.WarehouseList(CurrentTenant.Id), entity.Id.ToString(), dto, RedisTtl.MasterData);
+        return dto;
     }
 
     public async Task<WarehouseDto> UpdateAsync(Guid id, CreateUpdateWarehouseDto input)
     {
-        var warehouse = await _warehouseRepository.GetAsync(id);
+        var entity = await _repository.GetAsync(id);
+        entity.Code = input.Code;
+        entity.Name = input.Name;
+        entity.Address = input.Address;
+        entity.ProvinceCode = input.ProvinceCode;
+        entity.Note = input.Note;
+        entity.Status = input.Status;
+        await _repository.UpdateAsync(entity);
+        var dto = ObjectMapper.Map<Warehouse, WarehouseDto>(entity);
 
-        warehouse.Code = input.Code;
-        warehouse.Name = input.Name;
-        warehouse.Address = input.Address;
-        warehouse.ProvinceCode = input.ProvinceCode;
-        warehouse.Note = input.Note;
-        warehouse.Status = input.Status;
-
-        await _warehouseRepository.UpdateAsync(warehouse);
-
-        return ObjectMapper.Map<Warehouse, WarehouseDto>(warehouse);
+        await _redis.StringSetAsync(RedisKeys.Warehouse(CurrentTenant.Id, id), dto, RedisTtl.MasterData);
+        await _redis.HashSetAsync(RedisKeys.WarehouseList(CurrentTenant.Id), id.ToString(), dto, RedisTtl.MasterData);
+        return dto;
     }
 
     public async Task DeleteAsync(Guid id)
     {
-        await _warehouseRepository.DeleteAsync(id);
+        await _repository.DeleteAsync(id);
+        await _redis.KeyDeleteAsync(RedisKeys.Warehouse(CurrentTenant.Id, id));
+        await _redis.HashDeleteAsync(RedisKeys.WarehouseList(CurrentTenant.Id), id.ToString());
     }
 }

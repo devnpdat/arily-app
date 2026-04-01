@@ -22,6 +22,8 @@ using Elastic.Apm.NetCoreAll;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Volo.Abp.Auditing;
 using Volo.Abp.Autofac;
+using StackExchange.Redis;
+using Volo.Abp.Caching.StackExchangeRedis;
 using Volo.Abp.Modularity;
 using Volo.Abp.Security.Claims;
 using Volo.Abp.Swashbuckle;
@@ -37,7 +39,8 @@ namespace Arily;
     typeof(AbpAccountWebOpenIddictModule),
     typeof(AbpAspNetCoreMvcUiBasicThemeModule),
     typeof(AbpAspNetCoreSerilogModule),
-    typeof(AbpSwashbuckleModule)
+    typeof(AbpSwashbuckleModule),
+    typeof(AbpCachingStackExchangeRedisModule)
 )]
 public class ArilyHttpApiHostModule : AbpModule
 {
@@ -60,12 +63,27 @@ public class ArilyHttpApiHostModule : AbpModule
 
         ConfigureAuthentication(context);
         ConfigureAuditLogging(context, configuration);
+        ConfigureRedis(context, configuration);
         ConfigureCors(context, configuration);
         ConfigureSwaggerServices(context, configuration);
 
         context.Services.AddHttpClient();
         context.Services.AddHostedService<ElasticsearchSetupService>();
         context.Services.AddAllElasticApm();
+    }
+
+    private static void ConfigureRedis(ServiceConfigurationContext context, IConfiguration configuration)
+    {
+        var redisConfig = configuration["Redis:Configuration"];
+        if (redisConfig.IsNullOrEmpty()) return;
+
+        // IDistributedCache — dùng bởi ABP internals (session, permission cache...)
+        context.Services.AddStackExchangeRedisCache(options =>
+            options.Configuration = redisConfig);
+
+        // IConnectionMultiplexer — dùng bởi RedisService (String + Hash operations)
+        context.Services.AddSingleton<IConnectionMultiplexer>(
+            ConnectionMultiplexer.Connect(redisConfig!));
     }
 
     private void ConfigureAuditLogging(ServiceConfigurationContext context, IConfiguration configuration)
